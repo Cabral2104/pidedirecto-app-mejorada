@@ -1,0 +1,40 @@
+// ─── firestore.rules ─────────────────────────────────────────────────────────
+// Reglas de seguridad para Firestore.
+// Despliega con:  firebase deploy --only firestore:rules
+//
+// IMPORTANTE: Estas reglas son un punto de partida. Ajústalas según tu
+// modelo de autenticación antes de ir a producción.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Restaurants ───────────────────────────────────────────────────────────
+    // Anyone can read. Only authenticated owners can write their own document.
+    match /restaurants/{restaurantId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == restaurantId;
+
+      // Menu subcollection
+      match /menu/{itemId} {
+        allow read: if true;
+        allow write: if request.auth != null && request.auth.uid == restaurantId;
+      }
+    }
+
+    // ── Orders ────────────────────────────────────────────────────────────────
+    // Customers can create orders (no auth required — guest checkout).
+    // Only the restaurant owner can read and update their orders.
+    match /orders/{orderId} {
+      allow create: if true;
+      allow read, update: if request.auth != null
+        && request.auth.uid == resource.data.restaurantId;
+    }
+
+    // ── Users (future) ────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
