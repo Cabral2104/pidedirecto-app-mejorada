@@ -1,48 +1,66 @@
+// src/utils/whatsapp.js
+// Usa solo texto ASCII para el mensaje de WhatsApp.
+// Los emojis en encodeURIComponent son inconsistentes entre navegadores/OS,
+// por eso usamos etiquetas de texto plano: confiables en todos los entornos.
+
 /**
- * Generates a formatted WhatsApp message for an order
- * and returns the full wa.me URL ready to open.
- *
- * @param {Object} restaurant  - Restaurant object with `name` and `whatsapp` fields
- * @param {Array}  cart        - Array of cart items { name, qty, price }
+ * Construye la URL de WhatsApp con el mensaje del pedido.
+ * @param {Object} restaurant  - { name, phone|whatsapp }
+ * @param {Array}  cart        - [{ name, qty, price }]
  * @param {string} customerName
  * @param {string} address
- * @param {string} [note]      - Optional special instructions
- * @returns {string} Full WhatsApp URL
+ * @param {string} [note]
+ * @param {Object} [options]   - { orderType, paymentMethod, cashAmount, deliveryFee, total }
  */
-export function buildWhatsAppUrl(restaurant, cart, customerName, address, note = "") {
+export function buildWhatsAppUrl(restaurant, cart, customerName, address, note = "", options = {}) {
+  const {
+    orderType     = "delivery",
+    paymentMethod = "cash",
+    cashAmount    = 0,
+    deliveryFee   = 0,
+    total,
+  } = options;
+
+  const subtotal   = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const grandTotal = total ?? (orderType === "delivery" ? subtotal + deliveryFee : subtotal);
+  const change     = parseFloat(cashAmount) - grandTotal;
+
+  const SEP  = "--------------------";
+  const tipo = orderType === "delivery" ? "Domicilio" : "Recoger en local";
+  const pago = paymentMethod === "cash"
+    ? `Efectivo (paga con $${cashAmount})`
+    : "Tarjeta";
+
   const lines = [
-    `🍽️ *NUEVO PEDIDO — ${restaurant.name}*`,
-    "",
-    `👤 *Cliente:* ${customerName}`,
-    `📍 *Dirección:* ${address}`,
-    ...(note ? [`📝 *Nota:* ${note}`] : []),
-    "",
+    `*NUEVO PEDIDO - ${restaurant.name}*`,
+    SEP,
+    `*Cliente:* ${customerName}`,
+    `*Tipo:* ${tipo}`,
+    ...(orderType === "delivery" ? [`*Direccion:* ${address}`] : []),
+    `*Pago:* ${pago}`,
+    ...(note ? [`*Nota:* ${note}`] : []),
+    SEP,
     "*Pedido:*",
-    ...cart.map((item) => `• ${item.name} x${item.qty} — $${item.price * item.qty}`),
-    "",
-    `💰 *Total: $${cart.reduce((sum, item) => sum + item.price * item.qty, 0)}*`,
-    "",
-    "Gracias por tu pedido! 🙌",
+    ...cart.map((i) => `  - ${i.name} x${i.qty}  $${i.price * i.qty}`),
+    SEP,
+    ...(orderType === "delivery" ? [`Envio: $${deliveryFee}`] : []),
+    `*TOTAL: $${grandTotal}*`,
+    ...(paymentMethod === "cash" && change > 0
+      ? [`Cambio: $${change.toFixed(0)}`]
+      : []),
+    SEP,
+    "Pedido enviado desde PideDirecto.com",
   ];
 
-  const message = encodeURIComponent(lines.join("\n"));
-  return `https://wa.me/${restaurant.whatsapp}?text=${message}`;
+  const phone = (restaurant.phone ?? restaurant.whatsapp ?? "").replace(/\D/g, "");
+  const text  = encodeURIComponent(lines.join("\n"));
+  return `https://wa.me/${phone}?text=${text}`;
 }
 
-/**
- * Returns the total price of all items in the cart.
- * @param {Array} cart
- * @returns {number}
- */
 export function getCartTotal(cart) {
-  return cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  return cart.reduce((s, i) => s + i.price * i.qty, 0);
 }
 
-/**
- * Returns the total item count in the cart.
- * @param {Array} cart
- * @returns {number}
- */
 export function getCartCount(cart) {
-  return cart.reduce((sum, item) => sum + item.qty, 0);
+  return cart.reduce((s, i) => s + i.qty, 0);
 }

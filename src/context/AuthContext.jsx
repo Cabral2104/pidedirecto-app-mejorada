@@ -1,7 +1,4 @@
-// src/context/AuthContext.jsx
-// Provee el usuario autenticado y su perfil (con `role`) a toda la app.
-
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebase/config";
 import { getUserProfile, logout as firebaseLogout, ROLES } from "../firebase/services/authService";
@@ -9,13 +6,11 @@ import { getUserProfile, logout as firebaseLogout, ROLES } from "../firebase/ser
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser]         = useState(null);   // Firebase Auth user object
-  const [profile, setProfile]   = useState(null);   // Firestore users/{uid} document
-  const [loading, setLoading]   = useState(true);   // true while resolving first auth state
+  const [user, setUser]       = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Firebase keeps the session in localStorage automatically.
-    // onAuthStateChanged fires once on mount with the persisted session (or null).
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
@@ -27,23 +22,25 @@ export function AuthProvider({ children }) {
       }
       setLoading(false);
     });
-
     return () => unsub();
+  }, []);
+
+  // Permite refrescar el perfil desde cualquier componente (ej. después de editar)
+  const refreshProfile = useCallback(async () => {
+    if (!auth.currentUser) return;
+    const prof = await getUserProfile(auth.currentUser.uid);
+    setProfile(prof);
   }, []);
 
   const logout = async () => {
     await firebaseLogout();
-    // onAuthStateChanged will fire and clear user/profile automatically
   };
 
-  // Convenience booleans
   const isRestaurant = profile?.role === ROLES.RESTAURANT;
   const isCustomer   = profile?.role === ROLES.CUSTOMER;
 
   return (
-    <AuthContext.Provider
-      value={{ user, profile, loading, logout, isRestaurant, isCustomer }}
-    >
+    <AuthContext.Provider value={{ user, profile, loading, logout, isRestaurant, isCustomer, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

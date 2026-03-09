@@ -1,7 +1,7 @@
 // src/firebase/services/orderService.js
 import {
-  collection, doc, addDoc, updateDoc,
-  onSnapshot, query, where, orderBy, serverTimestamp,
+  collection, doc, addDoc, updateDoc, getDocs,
+  onSnapshot, query, where, orderBy, serverTimestamp, startAfter, limit,
 } from "firebase/firestore";
 import { db } from "../config";
 
@@ -86,4 +86,19 @@ export function formatOrderTime(timestamp) {
   if (diff < 3600)  return `hace ${Math.floor(diff / 60)} min`;
   if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`;
   return date.toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
+}
+
+// ─── PAGINATED orders for user (order history) ────────────────────────────────
+export async function getUserOrdersPaged(userId, pageSize = 6, lastDoc = null) {
+  const constraints = [
+    where("userId", "==", userId),
+    orderBy("createdAt", "desc"),
+    limit(pageSize + 1),
+  ];
+  if (lastDoc) constraints.push(startAfter(lastDoc));
+  const snap    = await getDocs(query(collection(db, "orders"), ...constraints));
+  const docs    = snap.docs;
+  const hasMore = docs.length > pageSize;
+  const items   = docs.slice(0, pageSize).map((d) => ({ id: d.id, ...d.data(), _snap: d }));
+  return { items, lastDoc: docs[pageSize - 1] ?? null, hasMore };
 }

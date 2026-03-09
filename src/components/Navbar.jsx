@@ -104,6 +104,10 @@ export default function Navbar({ view, setView }) {
                         </span>
                       </div>
                     </div>
+                    
+                      <button onClick={() => { setView("profile"); setUserMenuOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 12px", background: "none", border: "none", borderRadius: 10, cursor: "pointer", fontSize: 13, color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif", fontWeight: 600, textAlign: "left" }}>
+                      👤 Mi perfil
+                    </button>
                     {isRestaurant && (
                       <button onClick={() => { setView("dashboard"); setUserMenuOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "9px 12px", background: "none", border: "none", borderRadius: 10, cursor: "pointer", fontSize: 13, color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif", fontWeight: 600, textAlign: "left" }}>
                         🏪 Mi panel

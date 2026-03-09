@@ -49,7 +49,7 @@ function StatCard({ icon, value, label, sub, delay }) {
 
 // ─── ORDERS TAB ───────────────────────────────────────────────────────────────
 function OrdersTab({ restaurantId }) {
-  const { orders, loading, counts } = useOrders(restaurantId);
+  const { orders, loading, loadingMore, hasMore, loadMore, counts } = useOrders(restaurantId);
   const [filter, setFilter] = useState("todos");
 
   const visible = filter === "todos" ? orders : orders.filter((o) => o.status === filter);
@@ -77,7 +77,7 @@ function OrdersTab({ restaurantId }) {
         {visible.map((order, i) => {
           const sc = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.nuevo;
           return (
-            <div key={order.id} className="card" style={{ padding: 20, animation: `fadeUp 0.4s ease ${i * 0.06}s both` }}>
+            <div key={order.id} className="card" style={{ padding: 20, animation: `fadeUp 0.4s ease ${Math.min(i, 8) * 0.06}s both` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
@@ -126,6 +126,15 @@ function OrdersTab({ restaurantId }) {
           );
         })}
       </div>
+
+      {/* Paginación — cargar más pedidos */}
+      {hasMore && filter === "todos" && (
+        <div style={{ textAlign: "center", marginTop: 20 }}>
+          <button className="btn-ghost" onClick={loadMore} disabled={loadingMore} style={{ padding: "12px 32px" }}>
+            {loadingMore ? "Cargando..." : "Ver más pedidos"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

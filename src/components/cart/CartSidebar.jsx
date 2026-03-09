@@ -120,42 +120,52 @@ export default function CartSidebar({ restaurantData }) {
   const grandTotal  = orderType === "delivery" ? subtotal + deliveryFee : subtotal;
   
   const restaurantIsOpen = restaurant?.isOpen !== false;
+  const cashNum = parseFloat(cashAmount) || 0;
 
   const canSubmit = (
     restaurantIsOpen &&
     name.trim() &&
     (orderType === "pickup" || address.trim()) &&
-    (paymentMethod === "card" || (paymentMethod === "cash" && parseFloat(cashAmount) >= grandTotal))
+    (paymentMethod === "card" ||
+      (paymentMethod === "cash" && (
+        orderType === "pickup" ||
+        cashNum >= grandTotal
+      ))
+    )
   );
 
   const handleSendOrder = async () => {
     if (!canSubmit || !restaurant || sending) return;
     setSending(true);
 
-    // Build WhatsApp message
-    const orderLines = [
-      `🍽️ *NUEVO PEDIDO — ${restaurant.name}*`,
-      "",
-      `👤 *Cliente:* ${name.trim()}`,
-      `📦 *Tipo:* ${orderType === "delivery" ? "🚚 Domicilio" : "🏪 Recoger en local"}`,
-      ...(orderType === "delivery" ? [`📍 *Dirección:* ${address.trim()}`] : []),
-      `💳 *Pago:* ${paymentMethod === "cash" ? `Efectivo (paga con $${cashAmount})` : "Tarjeta"}`,
-      ...(note.trim() ? [`📝 *Nota:* ${note.trim()}`] : []),
-      "",
+    const SEP = "--------------------";
+    const lines = [
+      `*NUEVO PEDIDO - ${restaurant.name}*`,
+      SEP,
+      `*Cliente:* ${name.trim()}`,
+      `*Tipo:* ${orderType === "delivery" ? "Domicilio" : "Recoger en local"}`,
+      ...(orderType === "delivery" ? [`*Direccion:* ${address.trim()}`] : []),
+      `*Pago:* ${paymentMethod === "cash"
+        ? (orderType === "delivery" ? `Efectivo (paga con $${cashAmount})` : "Efectivo al recoger")
+        : "Tarjeta"}`,
+      ...(note.trim() ? [`*Nota:* ${note.trim()}`] : []),
+      SEP,
       "*Pedido:*",
-      ...cart.map((i) => `• ${i.name} x${i.qty} — $${i.price * i.qty}`),
-      "",
-      ...(orderType === "delivery" ? [`🚚 Envío: $${deliveryFee}`] : []),
-      `💰 *Total: $${grandTotal}*`,
-      ...(paymentMethod === "cash" ? [`💵 Cambio de: $${(parseFloat(cashAmount) - grandTotal).toFixed(0)}`] : []),
-      "",
-      "Gracias por tu pedido! 🙌",
+      ...cart.map((i) => `  - ${i.name} x${i.qty}  $${i.price * i.qty}`),
+      SEP,
+      ...(orderType === "delivery" ? [`Envio: $${deliveryFee}`] : []),
+      `*TOTAL: $${grandTotal}*`,
+      ...(paymentMethod === "cash" && orderType === "delivery" && cashNum > grandTotal
+        ? [`Cambio: $${(cashNum - grandTotal).toFixed(0)}`]
+        : []),
+      SEP,
+      "Pedido enviado desde PideDirecto",
     ];
 
-    const waUrl = `https://wa.me/${restaurant.phone ?? restaurant.whatsapp}?text=${encodeURIComponent(orderLines.join("\n"))}`;
+    const phone = (restaurant.phone ?? restaurant.whatsapp ?? "").replace(/\D/g, "");
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
     window.open(waUrl, "_blank");
 
-    // Save to Firestore
     await saveOrderToFirestore({
       restaurant,
       customerName:  name.trim(),
@@ -163,7 +173,7 @@ export default function CartSidebar({ restaurantData }) {
       note:          note.trim(),
       orderType,
       paymentMethod,
-      paymentAmount: parseFloat(cashAmount) || grandTotal,
+      paymentAmount: orderType === "delivery" ? cashNum : grandTotal,
       deliveryFee:   orderType === "delivery" ? deliveryFee : 0,
       total:         grandTotal,
       userId:        user?.uid ?? null,
@@ -300,13 +310,7 @@ export default function CartSidebar({ restaurantData }) {
                     Método de pago *
                   </span>
                   <div style={{ display: "flex", gap: 10 }}>
-                    <OptionCard
-                      icon="💵"
-                      title="Efectivo"
-                      subtitle="El repartidor lleva cambio"
-                      selected={paymentMethod === "cash"}
-                      onClick={() => setPayment("cash")}
-                    />
+                    <OptionCard icon="💵" title="Efectivo" subtitle={orderType === "pickup" ? "Pagas al recoger" : "El repartidor lleva cambio"} selected={paymentMethod === "cash"} onClick={() => setPayment("cash")} />
                     <OptionCard
                       icon="💳"
                       title="Tarjeta"
@@ -318,27 +322,20 @@ export default function CartSidebar({ restaurantData }) {
                 </div>
 
                 {/* Monto en efectivo — solo si paga en efectivo */}
-                {paymentMethod === "cash" && (
+                {paymentMethod === "cash" && orderType === "delivery" && (
                   <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>
-                      ¿Con cuánto pagarás? *
-                      <span style={{ fontWeight: 400, marginLeft: 4 }}>(total: ${grandTotal})</span>
+                      Con cuanto pagaras? * <span style={{ fontWeight: 400 }}>(total: ${grandTotal})</span>
                     </span>
-                    <input
-                      type="number"
-                      min={grandTotal}
-                      placeholder={`Mínimo $${grandTotal}`}
-                      value={cashAmount}
-                      onChange={(e) => setCashAmount(e.target.value)}
-                    />
-                    {cashAmount && parseFloat(cashAmount) >= grandTotal && (
+                    <input type="number" min={grandTotal} placeholder={`Minimo $${grandTotal}`} value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} />
+                    {cashNum >= grandTotal && cashNum > 0 && (
                       <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 700 }}>
-                        💵 El repartidor llevará ${(parseFloat(cashAmount) - grandTotal).toFixed(0)} de cambio
+                        El repartidor llevara ${(cashNum - grandTotal).toFixed(0)} de cambio
                       </span>
                     )}
-                    {cashAmount && parseFloat(cashAmount) < grandTotal && (
+                    {cashNum > 0 && cashNum < grandTotal && (
                       <span style={{ fontSize: 12, color: "var(--red)", fontWeight: 700 }}>
-                        ⚠️ El monto debe ser mayor o igual al total (${grandTotal})
+                        El monto debe ser mayor o igual al total (${grandTotal})
                       </span>
                     )}
                   </label>

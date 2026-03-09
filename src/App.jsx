@@ -11,6 +11,7 @@ import RestaurantsPage from "./pages/RestaurantsPage";
 import MenuPage from "./pages/MenuPage";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
+import ProfilePage from "./pages/ProfilePage";
 
 // AppShell va DENTRO de todos los providers
 function AppShell() {
@@ -24,9 +25,12 @@ function AppShell() {
   }, [view]);
 
   // Redirige si intenta acceder al panel sin ser restaurante
-  useEffect(() => {
+   useEffect(() => {
     if (view === "dashboard" && !loading && (!user || !isRestaurant)) {
       setView("home");
+    }
+    if (view === "profile" && !loading && !user) {
+      setView("login");
     }
   }, [view, user, isRestaurant, loading]);
 
@@ -70,6 +74,7 @@ function AppShell() {
         {view === "menu" && selectedRestaurant && (
           <MenuPage restaurant={selectedRestaurant} setView={setView} />
         )}
+        {view === "profile" && user && <ProfilePage />}
         {view === "dashboard" && user && isRestaurant && (
           <DashboardPage />
         )}
