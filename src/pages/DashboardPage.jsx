@@ -16,6 +16,7 @@ import {
   deleteMenuItem,
 } from "../firebase/services/restaurantService";
 import { uploadMenuItemImage } from "../firebase/services/storageService";
+import { getRestaurantReviewsPaged } from "../firebase/services/reviewService";
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -485,6 +486,162 @@ function StatsTab({ orders }) {
   );
 }
 
+// ─── REVIEWS TAB ──────────────────────────────────────────────────────────────
+function StarDisplay({ rating }) {
+  return (
+    <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <span key={s} style={{
+          fontSize: 15,
+          filter: s <= rating ? "none" : "grayscale(1) opacity(0.3)",
+        }}>⭐</span>
+      ))}
+      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--orange)", marginLeft: 6 }}>
+        {rating}.0
+      </span>
+    </div>
+  );
+}
+
+function ReviewsTab({ restaurantId, restaurant }) {
+  const [reviews,     setReviews]     = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore,     setHasMore]     = useState(false);
+  const [lastDoc,     setLastDoc]     = useState(null);
+
+  // Distribución de estrellas calculada del listado cargado
+  const dist = [5, 4, 3, 2, 1].map((star) => ({
+    star,
+    count: reviews.filter((r) => r.rating === star).length,
+  }));
+  const totalLoaded = reviews.length;
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    setLoading(true);
+    getRestaurantReviewsPaged(restaurantId, null)
+      .then(({ items, lastDoc: ld, hasMore: more }) => {
+        setReviews(items);
+        setLastDoc(ld);
+        setHasMore(more);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [restaurantId]);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const { items, lastDoc: ld, hasMore: more } = await getRestaurantReviewsPaged(restaurantId, lastDoc);
+      setReviews((prev) => [...prev, ...items]);
+      setLastDoc(ld);
+      setHasMore(more);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div>
+      {/* Resumen de rating */}
+      <div className="card" style={{ padding: 24, marginBottom: 20, display: "flex", gap: 32, alignItems: "center", flexWrap: "wrap" }}>
+        {/* Número grande */}
+        <div style={{ textAlign: "center", minWidth: 100 }}>
+          <div style={{ fontFamily: "Fraunces, serif", fontSize: 56, fontWeight: 900, color: "var(--orange)", lineHeight: 1 }}>
+            {restaurant?.rating?.toFixed(1) ?? "—"}
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 3, margin: "8px 0 4px" }}>
+            {[1,2,3,4,5].map((s) => (
+              <span key={s} style={{ fontSize: 18, filter: s <= Math.round(restaurant?.rating ?? 0) ? "none" : "grayscale(1) opacity(0.3)" }}>⭐</span>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {restaurant?.reviews ?? 0} reseñas en total
+          </div>
+        </div>
+
+        {/* Barras de distribución */}
+        <div style={{ flex: 1, minWidth: 200 }}>
+          {dist.map(({ star, count }) => {
+            const pct = totalLoaded > 0 ? Math.round((count / totalLoaded) * 100) : 0;
+            return (
+              <div key={star} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", minWidth: 16, textAlign: "right" }}>{star}</span>
+                <span style={{ fontSize: 13 }}>⭐</span>
+                <div style={{ flex: 1, height: 8, background: "var(--bg3)", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ width: `${pct}%`, height: "100%", background: "var(--orange)", borderRadius: 4, transition: "width 0.4s ease" }} />
+                </div>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", minWidth: 28 }}>{count}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Lista de reseñas */}
+      {reviews.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--text-muted)" }}>
+          <div style={{ fontSize: 44, marginBottom: 14 }}>⭐</div>
+          <h3 style={{ fontFamily: "Fraunces, serif", fontSize: 20, color: "var(--text)", marginBottom: 8 }}>
+            Sin reseñas aún
+          </h3>
+          <p style={{ fontSize: 14 }}>Las calificaciones de tus clientes aparecerán aquí.</p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {reviews.map((r, i) => (
+            <div key={r.id} className="card" style={{ padding: 18, animation: `fadeUp 0.3s ease ${i * 0.04}s both` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: r.comment ? 10 : 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {/* Avatar */}
+                  <div style={{
+                    width: 38, height: 38, borderRadius: "50%",
+                    background: "linear-gradient(135deg, var(--orange), var(--amber))",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 16, color: "#fff", fontWeight: 800, flexShrink: 0,
+                  }}>
+                    {(r.userName ?? "?")?.[0]?.toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)" }}>
+                      {r.userName ?? "Cliente"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
+                      {r.createdAt?.toDate
+                        ? r.createdAt.toDate().toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })
+                        : "—"}
+                    </div>
+                  </div>
+                </div>
+                <StarDisplay rating={r.rating} />
+              </div>
+              {r.comment && (
+                <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.6, margin: 0, paddingLeft: 50 }}>
+                  {r.comment}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasMore && (
+        <div style={{ textAlign: "center", marginTop: 20 }}>
+          <button className="btn-ghost" onClick={loadMore} disabled={loadingMore} style={{ padding: "12px 36px" }}>
+            {loadingMore ? "Cargando..." : "Ver más reseñas"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── PAGE ─────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { profile } = useAuth();
@@ -520,6 +677,7 @@ export default function DashboardPage() {
     { id: "pedidos",      label: "📋 Pedidos" },
     { id: "platillos",    label: "🍽️ Platillos" },
     { id: "estadisticas", label: "📊 Estadísticas" },
+    { id: "resenas",      label: "⭐ Reseñas" },
   ];
 
   if (!restaurantId) {
@@ -605,9 +763,10 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {activeTab === "pedidos"      && <OrdersTab  restaurantId={restaurantId} />}
-      {activeTab === "platillos"    && <DishesTab  restaurantId={restaurantId} />}
-      {activeTab === "estadisticas" && <StatsTab   orders={orders} />}
+      {activeTab === "pedidos"      && <OrdersTab   restaurantId={restaurantId} />}
+      {activeTab === "platillos"    && <DishesTab   restaurantId={restaurantId} />}
+      {activeTab === "estadisticas" && <StatsTab    orders={orders} />}
+      {activeTab === "resenas"      && <ReviewsTab  restaurantId={restaurantId} restaurant={restaurant} />}
     </div>
   );
 }

@@ -44,7 +44,7 @@ export default function Navbar({ view, setView }) {
         <button onClick={() => setView("home")} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: 0 }}>
           <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, var(--orange), var(--orange-light))", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🍴</div>
           <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, color: "var(--text)", letterSpacing: -0.5 }}>
-            Sabores<span style={{ color: "var(--orange)" }}>Ya</span>
+            Pide<span style={{ color: "var(--orange)" }}>Directo</span>
           </span>
         </button>
 

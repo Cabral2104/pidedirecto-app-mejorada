@@ -1,3 +1,4 @@
+// src/pages/ProfilePage.jsx
 import { useState, useRef, useEffect } from "react";
 import { useAuth }            from "../context/AuthContext";
 import { useUserOrders }      from "../hooks/useUserOrders";
@@ -5,14 +6,15 @@ import { subscribeToRestaurant, updateRestaurant } from "../firebase/services/re
 import { updateUserProfile }  from "../firebase/services/authService";
 import { uploadRestaurantImage, uploadFile } from "../firebase/services/storageService";
 import { formatOrderTime }    from "../firebase/services/orderService";
+import { hasReviewed, submitReview } from "../firebase/services/reviewService";
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-  nuevo:      { color: "var(--orange)",     bg: "var(--tag-bg)",    label: "Nuevo"      },
+  nuevo:      { color: "var(--orange)",     bg: "var(--tag-bg)",         label: "Nuevo"      },
   preparando: { color: "var(--amber)",      bg: "rgba(255,179,71,0.12)", label: "Preparando" },
-  listo:      { color: "var(--green)",      bg: "var(--green-bg)",  label: "Listo"      },
-  entregado:  { color: "var(--text-muted)", bg: "var(--bg3)",       label: "Entregado"  },
-  cancelado:  { color: "var(--red)",        bg: "var(--red-bg)",    label: "Cancelado"  },
+  listo:      { color: "var(--green)",      bg: "var(--green-bg)",       label: "Listo"      },
+  entregado:  { color: "var(--text-muted)", bg: "var(--bg3)",            label: "Entregado"  },
+  cancelado:  { color: "var(--red)",        bg: "var(--red-bg)",         label: "Cancelado"  },
 };
 
 function StatusBadge({ status }) {
@@ -65,9 +67,147 @@ function ImageUploadArea({ preview, onSelect, label = "Cambiar imagen", height =
   );
 }
 
+// ─── RATING MODAL ─────────────────────────────────────────────────────────────
+function RatingModal({ order, onClose }) {
+  const [rating,  setRating]  = useState(0);
+  const [hover,   setHover]   = useState(0);
+  const [comment, setComment] = useState("");
+  const [saving,  setSaving]  = useState(false);
+  const [done,    setDone]    = useState(false);
+  const [error,   setError]   = useState("");
+
+  const labels = ["", "Muy malo", "Malo", "Regular", "Bueno", "Excelente"];
+
+  const handleSubmit = async () => {
+    if (!rating) return;
+    setSaving(true); setError("");
+    try {
+      await submitReview(order.restaurantId, {
+        orderId:  order.id,
+        userId:   order.userId,
+        userName: order.customerName,
+        rating,
+        comment,
+      });
+      setDone(true);
+      setTimeout(onClose, 1800);
+    } catch (err) {
+      console.error(err);
+      setError("Error al guardar. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="overlay"
+      style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 300 }}
+      onClick={onClose}
+    >
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, width: "100%" }}>
+        {done ? (
+          <div style={{ textAlign: "center", padding: "28px 0" }}>
+            <div style={{ fontSize: 56, marginBottom: 14 }}>⭐</div>
+            <h3 style={{ fontFamily: "Fraunces, serif", fontSize: 22, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>
+              ¡Gracias por tu reseña!
+            </h3>
+            <p style={{ fontSize: 14, color: "var(--text-muted)" }}>Tu opinión ayuda a mejorar el servicio.</p>
+          </div>
+        ) : (
+          <>
+            <h2 style={{ fontFamily: "Fraunces, serif", fontSize: 20, fontWeight: 800, marginBottom: 4, color: "var(--text)" }}>
+              Calificar pedido
+            </h2>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 24 }}>
+              {order.restaurantName} · #{order.id.slice(-6).toUpperCase()}
+            </p>
+
+            {/* Stars */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 10, justifyContent: "center" }}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button
+                  key={s}
+                  onMouseEnter={() => setHover(s)}
+                  onMouseLeave={() => setHover(0)}
+                  onClick={() => setRating(s)}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    fontSize: 38, lineHeight: 1, padding: 4,
+                    transition: "transform 0.15s",
+                    transform: (hover || rating) >= s ? "scale(1.25)" : "scale(1)",
+                    filter: (hover || rating) >= s ? "none" : "grayscale(1) opacity(0.35)",
+                  }}
+                >
+                  ⭐
+                </button>
+              ))}
+            </div>
+            <p style={{ textAlign: "center", fontSize: 13, color: "var(--orange)", fontWeight: 700, marginBottom: 20, minHeight: 18 }}>
+              {labels[hover || rating]}
+            </p>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" }}>
+                Comentario (opcional)
+              </span>
+              <textarea
+                rows={3}
+                placeholder="¿Qué te pareció el restaurante?"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+              />
+            </label>
+
+            {error && (
+              <div style={{ background: "var(--red-bg)", border: "1px solid var(--red-border)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--red)", marginBottom: 14 }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn-ghost" style={{ flex: 1 }} onClick={onClose}>
+                Cancelar
+              </button>
+              <button
+                className="btn-primary"
+                style={{ flex: 2 }}
+                onClick={handleSubmit}
+                disabled={!rating || saving}
+              >
+                {saving ? "Guardando..." : "Enviar calificación"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── ORDER HISTORY (customer) ─────────────────────────────────────────────────
 function OrderHistory({ userId }) {
   const { orders, loading, loadingMore, hasMore, loadMore } = useUserOrders(userId);
+  const [reviewedIds, setReviewedIds] = useState({});  // { orderId: true | false }
+  const [modalOrder,  setModalOrder]  = useState(null);
+
+  // Verificar cuáles pedidos entregados ya fueron calificados
+  useEffect(() => {
+    const delivered = orders.filter((o) => o.status === "entregado");
+    delivered.forEach(async (o) => {
+      if (reviewedIds[o.id] !== undefined) return; // ya verificado
+      const already = await hasReviewed(o.restaurantId, o.id);
+      setReviewedIds((prev) => ({ ...prev, [o.id]: already }));
+    });
+  }, [orders]);
+
+  // Cuando se cierra el modal marcamos el pedido como ya calificado
+  const handleCloseModal = () => {
+    if (modalOrder) {
+      setReviewedIds((prev) => ({ ...prev, [modalOrder.id]: true }));
+    }
+    setModalOrder(null);
+  };
 
   if (loading) return <Spinner />;
 
@@ -90,7 +230,9 @@ function OrderHistory({ userId }) {
                     #{order.id.slice(-6).toUpperCase()}
                   </span>
                   <StatusBadge status={order.status} />
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{formatOrderTime(order.createdAt)}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {formatOrderTime(order.createdAt)}
+                  </span>
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 14, color: "var(--orange)", marginTop: 4 }}>
                   {order.restaurantName}
@@ -100,16 +242,44 @@ function OrderHistory({ userId }) {
                 ${order.total}
               </span>
             </div>
-            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>
+
+            <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
               {order.items?.map((it) => `${it.name} x${it.qty}`).join(", ")}
             </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12, color: "var(--text-secondary)" }}>
-              <span style={{ background: "var(--bg3)", padding: "3px 10px", borderRadius: 50 }}>
-                {order.orderType === "pickup" ? "🏪 Recoger" : "🚚 Domicilio"}
-              </span>
-              <span style={{ background: "var(--bg3)", padding: "3px 10px", borderRadius: 50 }}>
-                {order.paymentMethod === "cash" ? "💵 Efectivo" : "💳 Tarjeta"}
-              </span>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ background: "var(--bg3)", padding: "3px 10px", borderRadius: 50, fontSize: 12, color: "var(--text-secondary)" }}>
+                  {order.orderType === "pickup" ? "🏪 Recoger" : "🚚 Domicilio"}
+                </span>
+                <span style={{ background: "var(--bg3)", padding: "3px 10px", borderRadius: 50, fontSize: 12, color: "var(--text-secondary)" }}>
+                  {order.paymentMethod === "cash" ? "💵 Efectivo" : "💳 Tarjeta"}
+                </span>
+              </div>
+
+              {/* Botón calificar — solo pedidos entregados */}
+              {order.status === "entregado" && (
+                reviewedIds[order.id] === true ? (
+                  <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 700 }}>
+                    ⭐ Ya calificaste
+                  </span>
+                ) : reviewedIds[order.id] === false ? (
+                  <button
+                    onClick={() => setModalOrder(order)}
+                    style={{
+                      background: "var(--tag-bg)", border: "1px solid var(--tag-border)",
+                      color: "var(--orange)", padding: "6px 16px", borderRadius: 50,
+                      fontSize: 12, cursor: "pointer", fontWeight: 700,
+                      fontFamily: "Plus Jakarta Sans, sans-serif",
+                    }}
+                  >
+                    ⭐ Calificar
+                  </button>
+                ) : (
+                  // Mientras verifica (undefined) muestra un placeholder pequeño
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>…</span>
+                )
+              )}
             </div>
           </div>
         ))}
@@ -122,18 +292,22 @@ function OrderHistory({ userId }) {
           </button>
         </div>
       )}
+
+      {modalOrder && (
+        <RatingModal order={modalOrder} onClose={handleCloseModal} />
+      )}
     </div>
   );
 }
 
 // ─── CUSTOMER PROFILE ─────────────────────────────────────────────────────────
 function CustomerProfile({ user, profile, refreshProfile }) {
-  const [tab, setTab]       = useState("info");
-  const [name, setName]     = useState(profile?.name ?? "");
-  const [phone, setPhone]   = useState(profile?.phone ?? "");
+  const [tab,    setTab]    = useState("info");
+  const [name,   setName]   = useState(profile?.name  ?? "");
+  const [phone,  setPhone]  = useState(profile?.phone ?? "");
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved]   = useState(false);
-  const [error, setError]   = useState("");
+  const [saved,  setSaved]  = useState(false);
+  const [error,  setError]  = useState("");
 
   const handleSave = async () => {
     if (!name.trim()) { setError("El nombre es obligatorio."); return; }
@@ -152,7 +326,7 @@ function CustomerProfile({ user, profile, refreshProfile }) {
 
   return (
     <div>
-      {/* Avatar + name */}
+      {/* Avatar */}
       <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 28 }}>
         <div style={{ width: 72, height: 72, borderRadius: "50%", background: "linear-gradient(135deg, var(--orange), var(--amber))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, color: "#fff", fontWeight: 800, flexShrink: 0 }}>
           {(profile?.name ?? user.email)?.[0]?.toUpperCase() ?? "?"}
@@ -206,7 +380,6 @@ function CustomerProfile({ user, profile, refreshProfile }) {
                 ✓ Cambios guardados
               </div>
             )}
-
             <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ alignSelf: "flex-start", padding: "11px 28px" }}>
               {saving ? "Guardando..." : "Guardar cambios"}
             </button>
@@ -229,10 +402,10 @@ function CustomerProfile({ user, profile, refreshProfile }) {
 // ─── RESTAURANT PROFILE ───────────────────────────────────────────────────────
 function RestaurantProfile({ user, profile, refreshProfile }) {
   const restaurantId = profile?.restaurantId;
-  const [restaurant, setRestaurant] = useState(null);
-  const [loadingRest, setLoadingRest] = useState(true);
+  const [restaurant,   setRestaurant]   = useState(null);
+  const [loadingRest,  setLoadingRest]  = useState(true);
+  const [tab, setTab] = useState("info");
 
-  // Suscripción en tiempo real
   useEffect(() => {
     if (!restaurantId) { setLoadingRest(false); return; }
     const unsub = subscribeToRestaurant(restaurantId, (data) => {
@@ -242,10 +415,8 @@ function RestaurantProfile({ user, profile, refreshProfile }) {
     return () => unsub();
   }, [restaurantId]);
 
-  const [tab, setTab] = useState("info");
-
   if (loadingRest) return <Spinner />;
-  if (!restaurant)  return (
+  if (!restaurant) return (
     <div style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
       <p>No se encontró el restaurante asociado.</p>
     </div>
@@ -253,7 +424,6 @@ function RestaurantProfile({ user, profile, refreshProfile }) {
 
   return (
     <div>
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 28 }}>
         <div style={{ width: 72, height: 72, background: "var(--bg3)", border: "2px solid var(--divider)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, flexShrink: 0, overflow: "hidden" }}>
           {restaurant.image
@@ -269,7 +439,6 @@ function RestaurantProfile({ user, profile, refreshProfile }) {
         </div>
       </div>
 
-      {/* Tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
         {[["info","🏪 Mi restaurante"],["account","👤 Mi cuenta"]].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
@@ -300,26 +469,16 @@ function RestaurantInfoForm({ restaurantId, restaurant }) {
     deliveryFee:  restaurant.deliveryFee  ?? 0,
     logo:         restaurant.logo         ?? "",
   });
-  const [coverFile, setCoverFile]     = useState(null);
-  const [coverPreview, setCoverPreview] = useState(restaurant.image ?? null);
-  const [logoFile, setLogoFile]       = useState(null);
-  const [logoPreview, setLogoPreview] = useState(null);
-  const [progress, setProgress]       = useState(0);
-  const [saving, setSaving]           = useState(false);
-  const [saved, setSaved]             = useState(false);
-  const [error, setError]             = useState("");
+  const [coverFile,     setCoverFile]     = useState(null);
+  const [coverPreview,  setCoverPreview]  = useState(restaurant.image ?? null);
+  const [logoFile,      setLogoFile]      = useState(null);
+  const [logoPreview,   setLogoPreview]   = useState(null);
+  const [progress,      setProgress]      = useState(0);
+  const [saving,        setSaving]        = useState(false);
+  const [saved,         setSaved]         = useState(false);
+  const [error,         setError]         = useState("");
 
   const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
-
-  const handleCoverSelect = (file) => {
-    setCoverFile(file);
-    setCoverPreview(URL.createObjectURL(file));
-  };
-
-  const handleLogoSelect = (file) => {
-    setLogoFile(file);
-    setLogoPreview(URL.createObjectURL(file));
-  };
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.phone.trim()) {
@@ -329,15 +488,11 @@ function RestaurantInfoForm({ restaurantId, restaurant }) {
     try {
       let imageUrl = restaurant.image ?? null;
       let logoUrl  = restaurant.logo  ?? null;
-
-      if (coverFile) {
-        imageUrl = await uploadRestaurantImage(restaurantId, coverFile, setProgress);
-      }
+      if (coverFile) imageUrl = await uploadRestaurantImage(restaurantId, coverFile, setProgress);
       if (logoFile) {
         const ext = logoFile.name.split(".").pop();
         logoUrl = await uploadFile(`restaurants/${restaurantId}/logo.${ext}`, logoFile, () => {});
       }
-
       await updateRestaurant(restaurantId, {
         name:         form.name.trim(),
         phone:        form.phone.trim(),
@@ -347,9 +502,8 @@ function RestaurantInfoForm({ restaurantId, restaurant }) {
         deliveryTime: form.deliveryTime.trim(),
         deliveryFee:  parseFloat(form.deliveryFee) || 0,
         ...(imageUrl ? { image: imageUrl } : {}),
-        ...(logoUrl  ? { logo: logoUrl }   : {}),
+        ...(logoUrl  ? { logo:  logoUrl  } : {}),
       });
-
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
       setProgress(0);
@@ -366,37 +520,25 @@ function RestaurantInfoForm({ restaurantId, restaurant }) {
       <h3 style={{ fontFamily: "Fraunces, serif", fontSize: 18, fontWeight: 800, marginBottom: 22, color: "var(--text)" }}>
         Información del restaurante
       </h3>
-
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-
-        {/* Cover image */}
         <div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 8 }}>
-            Foto del restaurante (portada)
-          </span>
-          <ImageUploadArea preview={coverPreview} onSelect={handleCoverSelect} label="Cambiar portada" height={160} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 8 }}>Foto del restaurante (portada)</span>
+          <ImageUploadArea preview={coverPreview} onSelect={(f) => { setCoverFile(f); setCoverPreview(URL.createObjectURL(f)); }} label="Cambiar portada" height={160} />
         </div>
-
-        {/* Logo image */}
         <div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 8 }}>
-            Logo / ícono
-          </span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 8 }}>Logo / ícono</span>
           <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
             <ImageUploadArea
               preview={logoPreview ?? (typeof restaurant.logo === "string" && restaurant.logo.startsWith("http") ? restaurant.logo : null)}
-              onSelect={handleLogoSelect}
-              label="Cambiar logo"
-              height={90}
+              onSelect={(f) => { setLogoFile(f); setLogoPreview(URL.createObjectURL(f)); }}
+              label="Cambiar logo" height={90}
             />
-            <div style={{ flex: 0 }}>
+            <div>
               <span style={{ fontSize: 13, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>o usa un emoji:</span>
               <input value={form.logo} onChange={set("logo")} placeholder="🍕" style={{ width: 60, textAlign: "center", fontSize: 22 }} />
             </div>
           </div>
         </div>
-
-        {/* Name + Phone */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" }}>Nombre *</span>
@@ -407,26 +549,20 @@ function RestaurantInfoForm({ restaurantId, restaurant }) {
             <input value={form.phone} onChange={set("phone")} placeholder="521234567890" />
           </label>
         </div>
-
-        {/* Category + Cuisine */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" }}>Categoría</span>
-            <input value={form.category} onChange={set("category")} placeholder="Ej. Pizza, Tacos, Sushi…" />
+            <input value={form.category} onChange={set("category")} placeholder="Ej. Pizza, Tacos…" />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" }}>Tipo de cocina</span>
             <input value={form.cuisine} onChange={set("cuisine")} placeholder="Ej. Italiana, Mexicana…" />
           </label>
         </div>
-
-        {/* Description */}
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" }}>Descripción</span>
           <textarea value={form.description} onChange={set("description")} rows={2} placeholder="Cuéntale a tus clientes sobre tu restaurante…" />
         </label>
-
-        {/* Delivery time + fee */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" }}>Tiempo de entrega</span>
@@ -437,23 +573,14 @@ function RestaurantInfoForm({ restaurantId, restaurant }) {
             <input type="number" min="0" value={form.deliveryFee} onChange={set("deliveryFee")} placeholder="30" />
           </label>
         </div>
-
         {progress > 0 && progress < 100 && (
           <div>
             <div className="progress-bar"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
             <span style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, display: "block" }}>Subiendo imagen… {progress}%</span>
           </div>
         )}
-
-        {error && (
-          <div style={{ background: "var(--red-bg)", border: "1px solid var(--red-border)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--red)" }}>{error}</div>
-        )}
-        {saved && (
-          <div style={{ background: "var(--green-bg)", border: "1px solid var(--green-border)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--green)", fontWeight: 700 }}>
-            ✓ Cambios guardados
-          </div>
-        )}
-
+        {error && <div style={{ background: "var(--red-bg)", border: "1px solid var(--red-border)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--red)" }}>{error}</div>}
+        {saved && <div style={{ background: "var(--green-bg)", border: "1px solid var(--green-border)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--green)", fontWeight: 700 }}>✓ Cambios guardados</div>}
         <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ alignSelf: "flex-start", padding: "11px 28px" }}>
           {saving ? (progress > 0 ? `Subiendo ${progress}%…` : "Guardando…") : "Guardar cambios"}
         </button>
@@ -462,12 +589,12 @@ function RestaurantInfoForm({ restaurantId, restaurant }) {
   );
 }
 
-// ─── Account form (name for restaurant user) ──────────────────────────────────
+// ─── Account form ─────────────────────────────────────────────────────────────
 function AccountForm({ user, profile, refreshProfile }) {
-  const [name, setName]     = useState(profile?.name ?? "");
+  const [name,   setName]   = useState(profile?.name ?? "");
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved]   = useState(false);
-  const [error, setError]   = useState("");
+  const [saved,  setSaved]  = useState(false);
+  const [error,  setError]  = useState("");
 
   const handleSave = async () => {
     if (!name.trim()) { setError("El nombre es obligatorio."); return; }
@@ -486,9 +613,7 @@ function AccountForm({ user, profile, refreshProfile }) {
 
   return (
     <div className="card" style={{ padding: 24 }}>
-      <h3 style={{ fontFamily: "Fraunces, serif", fontSize: 18, fontWeight: 800, marginBottom: 20, color: "var(--text)" }}>
-        Cuenta
-      </h3>
+      <h3 style={{ fontFamily: "Fraunces, serif", fontSize: 18, fontWeight: 800, marginBottom: 20, color: "var(--text)" }}>Cuenta</h3>
       <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 400 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" }}>Nombre *</span>
@@ -498,10 +623,8 @@ function AccountForm({ user, profile, refreshProfile }) {
           <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" }}>Correo</span>
           <input value={user.email} disabled style={{ opacity: 0.5 }} />
         </label>
-
         {error && <div style={{ background: "var(--red-bg)", border: "1px solid var(--red-border)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--red)" }}>{error}</div>}
         {saved && <div style={{ background: "var(--green-bg)", border: "1px solid var(--green-border)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "var(--green)", fontWeight: 700 }}>✓ Cambios guardados</div>}
-
         <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ alignSelf: "flex-start", padding: "11px 28px" }}>
           {saving ? "Guardando..." : "Guardar cambios"}
         </button>
@@ -516,7 +639,7 @@ export default function ProfilePage() {
 
   if (!user || !profile) {
     return (
-      <div style={{ maxWidth: 700, margin: "0 auto", padding: "88px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+      <div style={{ maxWidth: 700, margin: "0 auto", padding: "88px 20px", textAlign: "center" }}>
         <Spinner />
       </div>
     );
@@ -530,7 +653,6 @@ export default function ProfilePage() {
           Mi cuenta
         </h1>
       </div>
-
       {isRestaurant
         ? <RestaurantProfile user={user} profile={profile} refreshProfile={refreshProfile} />
         : <CustomerProfile   user={user} profile={profile} refreshProfile={refreshProfile} />
