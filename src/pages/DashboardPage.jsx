@@ -110,13 +110,13 @@ function OrdersTab({ restaurantId }) {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
                   {order.status !== "entregado" && order.status !== "cancelado" && (
                     <button className="btn-primary" style={{ padding: "8px 16px", fontSize: 13 }}
-                      onClick={() => advanceOrderStatus(order.id, order.status)}>
+                      onClick={() => advanceOrderStatus(order.id, order.status, order)}>
                       Siguiente →
                     </button>
                   )}
                   {order.status !== "cancelado" && order.status !== "entregado" && (
                     <button
-                      onClick={() => { if (window.confirm("¿Cancelar este pedido?")) cancelOrder(order.id); }}
+                      onClick={() => { if (window.confirm("¿Cancelar este pedido?")) cancelOrder(order.id, order); }}
                       style={{ background: "var(--red-bg)", border: "1px solid var(--red-border)", color: "var(--red)", padding: "7px 14px", borderRadius: 50, fontSize: 12, cursor: "pointer", fontWeight: 700, fontFamily: "Plus Jakarta Sans, sans-serif" }}>
                       Cancelar
                     </button>
